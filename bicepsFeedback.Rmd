@@ -1,0 +1,139 @@
+---
+title: "Biceps Feedback"
+output: html_document
+---
+Bonnie Mohnsen
+     	
+Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+
+Question
+
+Can an algorithm be designed that can predict biceps curl errors in order to provide feedback to the performer?
+
+
+Data 
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project came from this source: http://groupware.les.inf.puc-rio.br/har. 
+
+    Classe A - exactly according to the specification
+    Classe B - throwing elbows to the front
+    Classe C - lifting the dumbbell only halfway
+    Classe D - lowering the dumbbell only halfway
+    Classe E - throwing the hips to the front
+
+
+Overview
+
+The goal is to predict the manner in which the exercise was performe. This is the "classe" variable (A, B, C, D, E) in the training set.
+
+
+
+Code
+```{r}
+##Load libraries
+library(caret)
+library(e1071)
+library(ggplot2)
+```
+
+```{r}
+##Read/input data
+trainSet <- read.csv("pml-training.csv") 
+testSet <- read.csv("pml-testing.csv") 
+score_train <- trainSet$classe
+```
+
+```{r}
+##Clean data for NA, substantial missing data, near zero variance, and first six columns
+trainSet <- trainSet[, colSums(is.na(trainSet)) == 0]
+testSet <- testSet[, colSums(is.na(testSet)) == 0]
+nsv_train <- nearZeroVar(trainSet) 
+nsv_test <- nearZeroVar(testSet)
+trainSet <- trainSet[-nsv_train]
+testSet <- testSet[-nsv_test]
+length_train <- length(trainSet)
+length_test <- length(testSet)
+trainSet <- trainSet[7:length_train]
+testSet <- testSet[7:length_test]
+```
+
+```{r}
+##Create partition
+set.seed (1229)
+inTrain <- createDataPartition(trainSet$classe, p=0.80, list=F)
+trainSet <- trainSet[inTrain, ]
+valSet <- trainSet[-inTrain, ]
+```
+
+```{r, eval=FALSE}
+##Explore data
+Summary(trainSet)
+```
+
+```{r}
+##Build SVM model and determine in and out of sample error (CM-confusion matrix)
+model_svm <-svm(classe ~ ., data=trainSet)
+predict_svm <- predict(model_svm, trainSet)
+predict_CM_svm <- confusionMatrix(predict_svm,trainSet$classe)
+predict_svm_val <- predict(model_svm, valSet)
+predict_CM_svm_val <- confusionMatrix(predict_svm_val,valSet$classe)
+```
+
+```{r}
+##Build random forest model (using 250 trees and 5 k-folds) and determine in and out of sample error
+model_RF <- train(classe ~ ., data=trainSet, method="rf", trControl=trainControl(method="cv",number=5),prox=TRUE,allowParallel=TRUE, ntree=250)
+predict_rf <- predict(model_RF, trainSet)
+predict_CM_rf <- confusionMatrix(predict_rf, trainSet$classe) 
+predict_rf_val <- predict(model_RF, valSet)
+predict_CM_rf_val <- confusionMatrix(predict_rf_val,valSet$classe) 
+```
+
+```{r}
+##Run model_RF on testSet
+predict_rf_test <- predict(model_RF, testSet)
+```
+
+```{r}
+##Prepare for submission
+predict_rf_test <- as.vector(predict_rf_test)
+n = length(predict_rf_test)
+for(i in 1:n){
+     filename = paste0("problem_id_",i,".txt")
+     write.table(predict_rf_test[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+}
+pml_write_files(predict_rf_test)
+```
+
+Conclusion
+I read in the training and testing sets, then I clean the data removing variables with a high number of NA, variables that were basically empty, and near zero variables. Additionally I reoved the first six column since they would have no baring on the model.
+
+Then, I partitioned the training set into a training set (80%) and a validation set (20%). Then I explored the data in the training set.
+
+Next, I ran SVM on the training set. The in sample error was 95.1% and validation set out of sample error also was 95.1%. So, I ran a random forest and the in sample error was 100% accurate and the validation set out of sample error also was 100% accuracy. Therefore, I selected random forest which included 250 trees and 5 k-folds for cross validation.
+
+I think the out of sample error for the test set will be very close to the validation out of sample error of 100%. Indeed, all 20 of the test samples were accurately predicted.
+
+Appendix A
+Shows the accuracy of the model on the Validation Set
+```{r}
+plot1 <- qplot(predict(model_RF,valSet), classe, data=valSet)
+plot1
+```
+
+Appendix B
+Shows the relative importance of variables
+```{r}
+plot2 <- dotPlot(varImp(model_RF))
+plot2
+```
+
